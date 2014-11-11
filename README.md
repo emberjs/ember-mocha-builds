@@ -1,5 +1,7 @@
 # ember-mocha-builds
 
+Distributable builds for [ember-mocha](https://github.com/switchfly/ember-mocha).
+
 ## Copyright and License
 
 Copyright 2014 Switchfly

@@ -1,0 +1,12 @@
+{
+  "name": "ember-mocha",
+  "version": "0.1.0",
+  "authors": [
+    "Dan Gebhardt",
+    "Robert Jackson"
+  ],
+  "license": "Apache Version 2.0",
+  "ignore": [ ],
+  "dependencies": { },
+  "devDependencies": { }
+}
