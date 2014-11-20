@@ -617,12 +617,18 @@ define("ember-mocha",
     }
 
     __exports__["default"] = function(testName, callback) {
-      function wrapper() {
-        var context = getContext();
-
-        resetViews();
-
-        callback.call(context);
+      var wrapper;
+      
+      if (callback.length === 1) {
+        wrapper = function(done) {
+          resetViews();
+          return callback.call(getContext(), done);
+        };
+      } else {
+        wrapper = function() {
+          resetViews();
+          return callback.call(getContext());
+        };
       }
 
       it(testName, wrapper);
