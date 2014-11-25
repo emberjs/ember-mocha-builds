@@ -616,9 +616,10 @@ define("ember-mocha",
       Ember.View.views = {};
     }
 
+    var originalIt = window.it;
     __exports__["default"] = function(testName, callback) {
       var wrapper;
-      
+
       if (callback.length === 1) {
         wrapper = function(done) {
           resetViews();
@@ -631,6 +632,6 @@ define("ember-mocha",
         };
       }
 
-      it(testName, wrapper);
+      originalIt(testName, wrapper);
     }
   });
