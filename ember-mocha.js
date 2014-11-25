@@ -730,23 +730,35 @@ define("ember-mocha",
     }
 
     var originalIt = window.it;
-    __exports__["default"] = function(testName, callback) {
-      var wrapper;
 
-      if (callback.length === 1) {
-        wrapper = function(done) {
-          resetViews();
-          return callback.call(getContext(), done);
-        };
-      } else {
-        wrapper = function() {
-          resetViews();
-          return callback.call(getContext());
-        };
-      }
+    function wrap(specifier) {
+      return function (testName, callback) {
+        var wrapper;
 
-      originalIt(testName, wrapper);
+        if (!callback) {
+          wrapper = null;
+        } else if (callback.length === 1) {
+          wrapper = function(done) {
+            resetViews();
+            return callback.call(getContext(), done);
+          };
+        } else {
+          wrapper = function() {
+            resetViews();
+            return callback.call(getContext());
+          };
+        }
+        specifier(testName, wrapper);
+      };
     }
+
+    var wrappedIt = wrap(window.it);
+    wrappedIt.only = wrap(window.it.only);
+    wrappedIt.skip = function(testName, callback) {
+      originalIt(testName);
+    };
+
+    __exports__["default"] = wrappedIt;
   });
 var emberMocha = requireModule("ember-mocha");
 
