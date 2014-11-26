@@ -1,6 +1,6 @@
 {
   "name": "ember-mocha",
-  "version": "0.1.4+pre.35d446d1cd",
+  "version": "0.1.4+pre.bcc101c2b6",
   "authors": [
     "Dan Gebhardt",
     "Robert Jackson"
@@ -9,7 +9,8 @@
   "ignore": [ ],
   "dependencies": {
     "mocha": "~2.0.1",
-    "chai": "~1.10.0"
+    "chai": "~1.10.0",
+    "ember-mocha-adapter": "~0.2.1"
   },
   "devDependencies": { }
 }
