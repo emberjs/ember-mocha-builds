@@ -748,7 +748,7 @@ define("ember-mocha",
             return callback.call(getContext());
           };
         }
-        specifier(testName, wrapper);
+        return specifier(testName, wrapper);
       };
     }
 
@@ -760,6 +760,10 @@ define("ember-mocha",
 
     __exports__["default"] = wrappedIt;
   });
+define("ember", ["exports"], function(__exports__) {
+  __exports__["default"] = window.Ember;
+});
+
 var emberMocha = requireModule("ember-mocha");
 
 window.describeModule = emberMocha.describeModule;

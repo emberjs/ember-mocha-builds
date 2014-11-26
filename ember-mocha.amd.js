@@ -635,7 +635,7 @@ define("ember-mocha",
             return callback.call(getContext());
           };
         }
-        specifier(testName, wrapper);
+        return specifier(testName, wrapper);
       };
     }
 
