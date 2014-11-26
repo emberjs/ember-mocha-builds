@@ -139,9 +139,12 @@ define("ember-mocha",
     }
   });
 ;define("ember-mocha/mocha-module", 
-  ["exports"],
-  function(__exports__) {
+  ["ember","ember-test-helpers","exports"],
+  function(__dependency1__, __dependency2__, __exports__) {
     "use strict";
+    var Ember = __dependency1__["default"];
+    var getContext = __dependency2__.getContext;
+
     function createModule(Constructor, name, description, callbacks, tests) {
       var module;
 
@@ -162,6 +165,12 @@ define("ember-mocha",
       describe(module.name, function() {
         beforeEach(function() {
           module.setup();
+          var context = getContext();
+          var keys = Ember.keys(context);
+          for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            this[key] = context[key];
+          }
         });
 
         afterEach(function() {
@@ -719,11 +728,10 @@ define("ember-mocha",
     }
   });
 ;define("ember-mocha/it", 
-  ["ember","ember-test-helpers","exports"],
-  function(__dependency1__, __dependency2__, __exports__) {
+  ["ember","exports"],
+  function(__dependency1__, __exports__) {
     "use strict";
     var Ember = __dependency1__["default"];
-    var getContext = __dependency2__.getContext;
 
     function resetViews() {
       Ember.View.views = {};
@@ -740,12 +748,12 @@ define("ember-mocha",
         } else if (callback.length === 1) {
           wrapper = function(done) {
             resetViews();
-            return callback.call(getContext(), done);
+            return callback.call(this, done);
           };
         } else {
           wrapper = function() {
             resetViews();
-            return callback.call(getContext());
+            return callback.call(this);
           };
         }
         return specifier(testName, wrapper);
