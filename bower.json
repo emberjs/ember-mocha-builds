@@ -1,6 +1,6 @@
 {
   "name": "ember-mocha",
-  "version": "0.1.3+pre.829cde44e0",
+  "version": "0.1.3+pre.24ff1da65e",
   "authors": [
     "Dan Gebhardt",
     "Robert Jackson"
@@ -8,7 +8,8 @@
   "license": "Apache Version 2.0",
   "ignore": [ ],
   "dependencies": {
-    "mocha": "~2.0.1"
+    "mocha": "~2.0.1",
+    "chai": "~1.10.0"
   },
   "devDependencies": { }
 }
