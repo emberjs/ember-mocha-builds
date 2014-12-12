@@ -756,6 +756,13 @@ define("ember-mocha",
             return callback.call(this);
           };
         }
+
+        if (wrapper) {
+          wrapper.toString = function() {
+            return callback.toString();
+          };
+        }
+
         return specifier(testName, wrapper);
       };
     }
