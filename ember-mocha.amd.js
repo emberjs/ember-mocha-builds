@@ -2,11 +2,11 @@ define('ember-mocha', ['exports', 'ember-mocha/describe-module', 'ember-mocha/de
 
   'use strict';
 
-  Object.defineProperty(exports, 'describeModule', { get: function () { return describeModule['default']; }});
-  Object.defineProperty(exports, 'describeComponent', { get: function () { return describeComponent['default']; }});
-  Object.defineProperty(exports, 'describeModel', { get: function () { return describeModel['default']; }});
-  Object.defineProperty(exports, 'it', { get: function () { return it['default']; }});
-  Object.defineProperty(exports, 'setResolver', { get: function () { return ember_test_helpers.setResolver; }});
+  Object.defineProperty(exports, 'describeModule', { enumerable: true, get: function () { return describeModule['default']; }});
+  Object.defineProperty(exports, 'describeComponent', { enumerable: true, get: function () { return describeComponent['default']; }});
+  Object.defineProperty(exports, 'describeModel', { enumerable: true, get: function () { return describeModel['default']; }});
+  Object.defineProperty(exports, 'it', { enumerable: true, get: function () { return it['default']; }});
+  Object.defineProperty(exports, 'setResolver', { enumerable: true, get: function () { return ember_test_helpers.setResolver; }});
 
 });
 define('ember-mocha/describe-component', ['exports', './mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
@@ -133,13 +133,13 @@ define('ember-test-helpers', ['exports', 'ember', 'ember-test-helpers/isolated-c
 
   'use strict';
 
-  Object.defineProperty(exports, 'isolatedContainer', { get: function () { return isolatedContainer['default']; }});
-  Object.defineProperty(exports, 'TestModule', { get: function () { return TestModule['default']; }});
-  Object.defineProperty(exports, 'TestModuleForComponent', { get: function () { return TestModuleForComponent['default']; }});
-  Object.defineProperty(exports, 'TestModuleForModel', { get: function () { return TestModuleForModel['default']; }});
-  Object.defineProperty(exports, 'getContext', { get: function () { return test_context.getContext; }});
-  Object.defineProperty(exports, 'setContext', { get: function () { return test_context.setContext; }});
-  Object.defineProperty(exports, 'setResolver', { get: function () { return test_resolver.setResolver; }});
+  Object.defineProperty(exports, 'isolatedContainer', { enumerable: true, get: function () { return isolatedContainer['default']; }});
+  Object.defineProperty(exports, 'TestModule', { enumerable: true, get: function () { return TestModule['default']; }});
+  Object.defineProperty(exports, 'TestModuleForComponent', { enumerable: true, get: function () { return TestModuleForComponent['default']; }});
+  Object.defineProperty(exports, 'TestModuleForModel', { enumerable: true, get: function () { return TestModuleForModel['default']; }});
+  Object.defineProperty(exports, 'getContext', { enumerable: true, get: function () { return test_context.getContext; }});
+  Object.defineProperty(exports, 'setContext', { enumerable: true, get: function () { return test_context.setContext; }});
+  Object.defineProperty(exports, 'setResolver', { enumerable: true, get: function () { return test_resolver.setResolver; }});
 
   Ember['default'].testing = true;
 
@@ -352,6 +352,7 @@ define('ember-test-helpers/test-module', ['exports', './isolated-container', './
 
     initSetupSteps: function() {
       this.setupSteps = [];
+      this.contextualizedSetupSteps = [];
 
       if (this.callbacks.beforeSetup) {
         this.setupSteps.push( this.callbacks.beforeSetup );
@@ -363,42 +364,50 @@ define('ember-test-helpers/test-module', ['exports', './isolated-container', './
       this.setupSteps.push(this.setupTestElements);
 
       if (this.callbacks.setup) {
-        this.setupSteps.push( this.callbacks.setup );
+        this.contextualizedSetupSteps.push( this.callbacks.setup );
         delete this.callbacks.setup;
       }
     },
 
     initTeardownSteps: function() {
       this.teardownSteps = [];
+      this.contextualizedTeardownSteps = [];
 
-      if (this.callbacks.beforeTeardown) {
-        this.teardownSteps.push( this.callbacks.beforeTeardown );
-        delete this.callbacks.beforeTeardown;
+      if (this.callbacks.teardown) {
+        this.contextualizedTeardownSteps.push( this.callbacks.teardown );
+        delete this.callbacks.teardown;
       }
 
       this.teardownSteps.push(this.teardownContainer);
       this.teardownSteps.push(this.teardownContext);
       this.teardownSteps.push(this.teardownTestElements);
 
-      if (this.callbacks.teardown) {
-        this.teardownSteps.push( this.callbacks.teardown );
-        delete this.callbacks.teardown;
+      if (this.callbacks.afterTeardown) {
+        this.teardownSteps.push( this.callbacks.afterTeardown );
+        delete this.callbacks.beforeTeardown;
       }
     },
 
     setup: function() {
       this.invokeSteps(this.setupSteps);
       this.contextualizeCallbacks();
+      this.invokeSteps(this.contextualizedSetupSteps, this.context);
     },
 
     teardown: function() {
+      this.invokeSteps(this.contextualizedTeardownSteps, this.context);
       this.invokeSteps(this.teardownSteps);
       this.cache = null;
     },
 
-    invokeSteps: function(steps) {
+    invokeSteps: function(steps, _context) {
+      var context = _context;
+      if (!context) {
+        context = this;
+      }
+
       for (var i = 0, l = steps.length; i < l; i++) {
-        steps[i].call(this);
+        steps[i].call(context);
       }
     },
 
