@@ -122,7 +122,7 @@ define('ember-mocha', ['exports', 'ember-mocha/describe-module', 'ember-mocha/de
   Object.defineProperty(exports, 'setResolver', { enumerable: true, get: function () { return ember_test_helpers.setResolver; }});
 
 });
-define('ember-mocha/describe-component', ['exports', './mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
+define('ember-mocha/describe-component', ['exports', 'ember-mocha/mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
 
   'use strict';
 
@@ -131,8 +131,12 @@ define('ember-mocha/describe-component', ['exports', './mocha-module', 'ember-te
   }
   exports['default'] = describeComponent;
 
+  describeComponent.only = mocha_module.createOnly(ember_test_helpers.TestModuleForComponent);
+
+  describeComponent.skip = mocha_module.createSkip(ember_test_helpers.TestModuleForComponent);
+
 });
-define('ember-mocha/describe-model', ['exports', './mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
+define('ember-mocha/describe-model', ['exports', 'ember-mocha/mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
 
   'use strict';
 
@@ -141,8 +145,12 @@ define('ember-mocha/describe-model', ['exports', './mocha-module', 'ember-test-h
   }
   exports['default'] = describeModel;
 
+  describeModel.only = mocha_module.createOnly(ember_test_helpers.TestModuleForModel);
+
+  describeModel.skip = mocha_module.createSkip(ember_test_helpers.TestModuleForModel);
+
 });
-define('ember-mocha/describe-module', ['exports', './mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
+define('ember-mocha/describe-module', ['exports', 'ember-mocha/mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
 
   'use strict';
 
@@ -150,6 +158,10 @@ define('ember-mocha/describe-module', ['exports', './mocha-module', 'ember-test-
     mocha_module.createModule(ember_test_helpers.TestModule, name, description, callbacks, tests);
   }
   exports['default'] = describeModule;
+
+  describeModule.only = mocha_module.createOnly(ember_test_helpers.TestModule);
+
+  describeModule.skip = mocha_module.createSkip(ember_test_helpers.TestModule);
 
 });
 define('ember-mocha/it', ['exports', 'ember'], function (exports, Ember) {
@@ -204,8 +216,10 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], f
   'use strict';
 
   exports.createModule = createModule;
+  exports.createOnly = createOnly;
+  exports.createSkip = createSkip;
 
-  function createModule(Constructor, name, description, callbacks, tests) {
+  function createModule(Constructor, name, description, callbacks, tests, method) {
     var module;
 
     if (!tests) {
@@ -222,7 +236,8 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], f
       module = new Constructor(name, description, callbacks);
     }
 
-    describe(module.name, function() {
+
+    function moduleBody() {
       beforeEach(function() {
         module.setup();
         var context = ember_test_helpers.getContext();
@@ -237,8 +252,26 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], f
         module.teardown();
       });
 
+      tests = tests || function() {};
       tests();
-    });
+    }
+    if (method) {
+      describe[method](module.name, moduleBody);
+    } else {
+      describe(module.name, moduleBody);
+    }
+  }
+
+  function createOnly(Constructor) {
+    return function(name, description, callbacks, tests) {
+      createModule(Constructor, name, description, callbacks, tests, "only");
+    };
+  }
+
+  function createSkip(Constructor) {
+    return function(name, description, callbacks, tests) {
+      createModule(Constructor, name, description, callbacks, tests, "skip");
+    };
   }
 
 });
@@ -257,7 +290,7 @@ define('ember-test-helpers', ['exports', 'ember', 'ember-test-helpers/isolated-c
   Ember['default'].testing = true;
 
 });
-define('ember-test-helpers/isolated-container', ['exports', './test-resolver', 'ember'], function (exports, test_resolver, Ember) {
+define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/test-resolver', 'ember'], function (exports, test_resolver, Ember) {
 
   'use strict';
 
@@ -314,7 +347,7 @@ define('ember-test-helpers/test-context', ['exports'], function (exports) {
   }
 
 });
-define('ember-test-helpers/test-module-for-component', ['exports', './test-module', 'ember', './test-resolver'], function (exports, TestModule, Ember, test_resolver) {
+define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-helpers/test-module', 'ember', 'ember-test-helpers/test-resolver'], function (exports, TestModule, Ember, test_resolver) {
 
   'use strict';
 
@@ -382,7 +415,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
   });
 
 });
-define('ember-test-helpers/test-module-for-model', ['exports', './test-module', 'ember'], function (exports, TestModule, Ember) {
+define('ember-test-helpers/test-module-for-model', ['exports', 'ember-test-helpers/test-module', 'ember'], function (exports, TestModule, Ember) {
 
   'use strict';
 
@@ -427,7 +460,7 @@ define('ember-test-helpers/test-module-for-model', ['exports', './test-module', 
   });
 
 });
-define('ember-test-helpers/test-module', ['exports', './isolated-container', './test-context', 'klassy'], function (exports, isolatedContainer, test_context, klassy) {
+define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-context', 'klassy'], function (exports, isolatedContainer, test_context, klassy) {
 
   'use strict';
 
