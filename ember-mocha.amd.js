@@ -181,9 +181,45 @@ define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/
 
   'use strict';
 
+  function exposeRegistryMethodsWithoutDeprecations(container) {
+    var methods = [
+      'register',
+      'unregister',
+      'resolve',
+      'normalize',
+      'typeInjection',
+      'injection',
+      'factoryInjection',
+      'factoryTypeInjection',
+      'has',
+      'options',
+      'optionsForType'
+    ];
+
+    function exposeRegistryMethod(container, method) {
+      container[method] = function() {
+        return container._registry[method].apply(container._registry, arguments);
+      };
+    }
+
+    for (var i = 0, l = methods.length; i < l; i++) {
+      exposeRegistryMethod(container, methods[i]);
+    }
+  }
+
   function isolatedContainer(fullNames) {
     var resolver = test_resolver.getResolver();
-    var container = new Ember['default'].Container();
+    var container;
+
+    if (Ember['default'].Registry) {
+      var registry = new Ember['default'].Registry();
+      container = registry.container();
+      exposeRegistryMethodsWithoutDeprecations(container);
+
+    } else {
+      container = new Ember['default'].Container();
+    }
+
     var normalize = function(fullName) {
       return resolver.normalize(fullName);
     };
@@ -285,7 +321,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
 
       this.callbacks.append = function() {
         Ember['default'].deprecate('this.append() is deprecated. Please use this.render() instead.');
-        return this.render();
+        return this.callbacks.render();
       };
 
       context.$ = function() {
@@ -513,7 +549,8 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
           context[key] = function(options) {
             if (_this.cache[key]) { return _this.cache[key]; }
 
-            var result = callbacks[key](options, factory());
+            var result = callbacks[key].call(_this, options, factory());
+
             _this.cache[key] = result;
 
             return result;
