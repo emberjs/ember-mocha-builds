@@ -29,11 +29,12 @@ define('ember-mocha/describe-component', ['exports', 'ember-mocha/mocha-module',
   function describeComponent(name, description, callbacks, tests) {
     mocha_module.createModule(ember_test_helpers.TestModuleForComponent, name, description, callbacks, tests);
   }
-  exports['default'] = describeComponent;
 
   describeComponent.only = mocha_module.createOnly(ember_test_helpers.TestModuleForComponent);
 
   describeComponent.skip = mocha_module.createSkip(ember_test_helpers.TestModuleForComponent);
+
+  exports['default'] = describeComponent;
 
 });
 define('ember-mocha/describe-model', ['exports', 'ember-mocha/mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
@@ -43,11 +44,12 @@ define('ember-mocha/describe-model', ['exports', 'ember-mocha/mocha-module', 'em
   function describeModel(name, description, callbacks, tests) {
     mocha_module.createModule(ember_test_helpers.TestModuleForModel, name, description, callbacks, tests);
   }
-  exports['default'] = describeModel;
 
   describeModel.only = mocha_module.createOnly(ember_test_helpers.TestModuleForModel);
 
   describeModel.skip = mocha_module.createSkip(ember_test_helpers.TestModuleForModel);
+
+  exports['default'] = describeModel;
 
 });
 define('ember-mocha/describe-module', ['exports', 'ember-mocha/mocha-module', 'ember-test-helpers'], function (exports, mocha_module, ember_test_helpers) {
@@ -57,11 +59,12 @@ define('ember-mocha/describe-module', ['exports', 'ember-mocha/mocha-module', 'e
   function describeModule(name, description, callbacks, tests) {
     mocha_module.createModule(ember_test_helpers.TestModule, name, description, callbacks, tests);
   }
-  exports['default'] = describeModule;
 
   describeModule.only = mocha_module.createOnly(ember_test_helpers.TestModule);
 
   describeModule.skip = mocha_module.createSkip(ember_test_helpers.TestModule);
+
+  exports['default'] = describeModule;
 
 });
 define('ember-mocha/it', ['exports', 'ember'], function (exports, Ember) {
@@ -111,7 +114,7 @@ define('ember-mocha/it', ['exports', 'ember'], function (exports, Ember) {
   exports['default'] = wrappedIt;
 
 });
-define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], function (exports, Ember, ember_test_helpers) {
+define('ember-mocha/mocha-module', ['exports', 'mocha', 'ember', 'ember-test-helpers'], function (exports, mocha, Ember, ember_test_helpers) {
 
   'use strict';
 
@@ -138,7 +141,7 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], f
 
 
     function moduleBody() {
-      beforeEach(function() {
+      mocha.beforeEach(function() {
         module.setup();
         var context = ember_test_helpers.getContext();
         var keys = Ember['default'].keys(context);
@@ -148,7 +151,7 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], f
         }
       });
 
-      afterEach(function() {
+      mocha.afterEach(function() {
         module.teardown();
       });
 
@@ -156,9 +159,9 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'ember-test-helpers'], f
       tests();
     }
     if (method) {
-      describe[method](module.name, moduleBody);
+      mocha.describe[method](module.name, moduleBody);
     } else {
-      describe(module.name, moduleBody);
+      mocha.describe(module.name, moduleBody);
     }
   }
 
