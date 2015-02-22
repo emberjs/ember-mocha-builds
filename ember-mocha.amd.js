@@ -1,3 +1,16 @@
+define('chai', ['exports'], function (exports) {
+
+	'use strict';
+
+	/* globals chai */
+
+	var expect = chai.expect;
+	var assert = chai.assert;
+
+	exports.expect = expect;
+	exports.assert = assert;
+
+});
 define('ember-mocha', ['exports', 'ember-mocha/describe-module', 'ember-mocha/describe-component', 'ember-mocha/describe-model', 'ember-mocha/it', 'ember-test-helpers'], function (exports, describeModule, describeComponent, describeModel, it, ember_test_helpers) {
 
   'use strict';
@@ -447,13 +460,14 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
         delete this.callbacks.teardown;
       }
 
+      this.teardownSteps.push(this.teardownSubject);
       this.teardownSteps.push(this.teardownContainer);
       this.teardownSteps.push(this.teardownContext);
       this.teardownSteps.push(this.teardownTestElements);
 
       if (this.callbacks.afterTeardown) {
         this.teardownSteps.push( this.callbacks.afterTeardown );
-        delete this.callbacks.beforeTeardown;
+        delete this.callbacks.afterTeardown;
       }
     },
 
@@ -504,6 +518,16 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
     setupTestElements: function() {
       if (Ember.$('#ember-testing').length === 0) {
         Ember.$('<div id="ember-testing"/>').appendTo(document.body);
+      }
+    },
+
+    teardownSubject: function() {
+      var subject = this.cache.subject;
+
+      if (subject) {
+        Ember.run(function() {
+          Ember.tryInvoke(subject, 'destroy');
+        });
       }
     },
 
@@ -732,5 +756,20 @@ define('klassy', ['exports'], function (exports) {
   exports.Klass = Klass;
   exports.defineClass = defineClass;
   exports.extendClass = extendClass;
+
+});
+define('mocha', ['exports'], function (exports) {
+
+  'use strict';
+
+  /* globals mocha, describe, it */
+
+  exports.mocha = mocha;
+  exports.describe = describe;
+  exports.it = it;
+  exports.before = before;
+  exports.beforeEach = beforeEach;
+  exports.after = after;
+  exports.afterEach = afterEach;
 
 });//# sourceMappingURL=ember-mocha.amd.map
