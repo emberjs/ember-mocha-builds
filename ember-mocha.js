@@ -120,8 +120,13 @@ define('chai', ['exports'], function (exports) {
 	var expect = chai.expect;
 	var assert = chai.assert;
 
+	var use = chai.use;
+	var Assertion = chai.Assertion;
+
 	exports.expect = expect;
 	exports.assert = assert;
+	exports.use = use;
+	exports.Assertion = Assertion;
 
 });
 define('ember-mocha', ['exports', 'ember-mocha/describe-module', 'ember-mocha/describe-component', 'ember-mocha/describe-model', 'ember-mocha/it', 'ember-test-helpers'], function (exports, describeModule, describeComponent, describeModel, it, ember_test_helpers) {
@@ -437,11 +442,10 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
 
       this.callbacks.render = function() {
         var containerView = Ember['default'].ContainerView.create({container: container});
-        var view = Ember['default'].run(function(){
+        Ember['default'].run(function(){
           var subject = context.subject();
           containerView.pushObject(subject);
           containerView.appendTo('#ember-testing');
-          return subject;
         });
 
         _this.teardownSteps.unshift(function() {
@@ -449,24 +453,18 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
             Ember['default'].tryInvoke(containerView, 'destroy');
           });
         });
-
-        return view.$();
       };
 
       this.callbacks.append = function() {
-        Ember['default'].deprecate('this.append() is deprecated. Please use this.render() instead.');
-        return this.callbacks.render();
+        Ember['default'].deprecate('this.append() is deprecated. Please use this.render() or this.$() instead.');
+        return context.$();
       };
 
       context.$ = function() {
-        var $view = this.render();
+        this.render();
         var subject = this.subject();
 
-        if (arguments.length){
-          return subject.$.apply(subject, arguments);
-        } else {
-          return $view;
-        }
+        return subject.$.apply(subject, arguments);
       };
     }
   });
@@ -477,6 +475,9 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', 'e
   'use strict';
 
   exports['default'] = TestModule['default'].extend({
+
+    isIntegration: true,
+
     init: function(name, description, callbacks) {
       this._super.call(this, name, description, callbacks);
       this.setupSteps.push(this.setupIntegrationHelpers);
@@ -526,24 +527,6 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', 'e
         self.actionHooks[actionName] = handler;
       };
 
-    },
-
-    setupContainer: function() {
-      var resolver = test_resolver.getResolver();
-      var namespace = Ember['default'].Object.create({
-        Resolver: { create: function() { return resolver; } }
-      });
-
-      if (Ember['default'].Application.buildRegistry) {
-        var registry;
-        registry = Ember['default'].Application.buildRegistry(namespace);
-        registry.register('component-lookup:main', Ember['default'].ComponentLookup);
-        this.registry = registry;
-        this.container = registry.container();
-      } else {
-        this.container = Ember['default'].Application.buildContainer(namespace);
-        this.container.register('component-lookup:main', Ember['default'].ComponentLookup);
-      }
     },
 
     setupContext: function() {
@@ -608,11 +591,15 @@ define('ember-test-helpers/test-module-for-model', ['exports', 'ember-test-helpe
       }
 
       callbacks.store = function(){
+        var container = this.container;
+
         return container.lookup('store:main');
       };
 
       if (callbacks.subject === defaultSubject) {
         callbacks.subject = function(options) {
+          var container = this.container;
+
           return Ember['default'].run(function() {
             return container.lookup('store:main').createRecord(modelName, options);
           });
@@ -622,7 +609,7 @@ define('ember-test-helpers/test-module-for-model', ['exports', 'ember-test-helpe
   });
 
 });
-define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-context', 'klassy'], function (exports, isolatedContainer, test_context, klassy) {
+define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-context', 'klassy', 'ember-test-helpers/test-resolver'], function (exports, Ember, isolatedContainer, test_context, klassy, test_resolver) {
 
   'use strict';
 
@@ -639,6 +626,11 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
       this.description = description || subjectName;
       this.name = description || subjectName;
       this.callbacks = callbacks || {};
+
+      if (this.callbacks.integration) {
+        this.isIntegration = callbacks.integration;      
+        delete callbacks.integration;
+      }
 
       this.initSubject();
       this.initNeeds();
@@ -707,6 +699,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
       this.invokeSteps(this.contextualizedTeardownSteps, this.context);
       this.invokeSteps(this.teardownSteps);
       this.cache = null;
+      this.cachedCalls = null;
     },
 
     invokeSteps: function(steps, _context) {
@@ -721,7 +714,11 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
     },
 
     setupContainer: function() {
-      this.container = isolatedContainer['default'](this.needs);
+      if (this.isIntegration) {
+        this._setupIntegratedContainer();
+      } else {
+        this._setupIsolatedContainer();
+      }
     },
 
     setupContext: function() {
@@ -742,8 +739,8 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
     },
 
     setupTestElements: function() {
-      if (Ember.$('#ember-testing').length === 0) {
-        Ember.$('<div id="ember-testing"/>').appendTo(document.body);
+      if (Ember['default'].$('#ember-testing').length === 0) {
+        Ember['default'].$('<div id="ember-testing"/>').appendTo(document.body);
       }
     },
 
@@ -751,15 +748,15 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
       var subject = this.cache.subject;
 
       if (subject) {
-        Ember.run(function() {
-          Ember.tryInvoke(subject, 'destroy');
+        Ember['default'].run(function() {
+          Ember['default'].tryInvoke(subject, 'destroy');
         });
       }
     },
 
     teardownContainer: function() {
       var container = this.container;
-      Ember.run(function() {
+      Ember['default'].run(function() {
         container.destroy();
       });
     },
@@ -767,15 +764,15 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
     teardownContext: function() {
       var context = this.context;
       if (context.dispatcher) {
-        Ember.run(function() {
+        Ember['default'].run(function() {
           context.dispatcher.destroy();
         });
       }
     },
 
     teardownTestElements: function() {
-      Ember.$('#ember-testing').empty();
-      Ember.View.views = {};
+      Ember['default'].$('#ember-testing').empty();
+      Ember['default'].View.views = {};
     },
 
     defaultSubject: function(options, factory) {
@@ -790,25 +787,51 @@ define('ember-test-helpers/test-module', ['exports', 'ember-test-helpers/isolate
       var factory   = context.factory;
 
       this.cache = this.cache || {};
+      this.cachedCalls = this.cachedCalls || {};
 
-      var keys = Ember.keys(callbacks);
+      var keys = Ember['default'].keys(callbacks);
 
       for (var i = 0, l = keys.length; i < l; i++) {
         (function(key) {
 
           context[key] = function(options) {
-            if (_this.cache[key]) { return _this.cache[key]; }
+            if (_this.cachedCalls[key]) { return _this.cache[key]; }
 
             var result = callbacks[key].call(_this, options, factory());
 
             _this.cache[key] = result;
+            _this.cachedCalls[key] = true;
 
             return result;
           };
 
         })(keys[i]);
       }
+    },
+
+
+    _setupIsolatedContainer: function() {
+      this.container = isolatedContainer['default'](this.needs);
+    },
+
+    _setupIntegratedContainer: function() {
+      var resolver = test_resolver.getResolver();
+      var namespace = Ember['default'].Object.create({
+        Resolver: { create: function() { return resolver; } }
+      });
+
+      if (Ember['default'].Application.buildRegistry) {
+        var registry;
+        registry = Ember['default'].Application.buildRegistry(namespace);
+        registry.register('component-lookup:main', Ember['default'].ComponentLookup);
+        this.registry = registry;
+        this.container = registry.container();
+      } else {
+        this.container = Ember['default'].Application.buildContainer(namespace);
+        this.container.register('component-lookup:main', Ember['default'].ComponentLookup);
+      }
     }
+
   });
 
 });
