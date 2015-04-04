@@ -273,13 +273,13 @@ define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/
     var globalContext = typeof global === 'object' && global || self;
     if (globalContext.DS) {
       var DS = globalContext.DS;
-      registry.register('transform:boolean', DS.BooleanTransform);
-      registry.register('transform:date', DS.DateTransform);
-      registry.register('transform:number', DS.NumberTransform);
-      registry.register('transform:string', DS.StringTransform);
-      registry.register('serializer:-default', DS.JSONSerializer);
-      registry.register('serializer:-rest', DS.RESTSerializer);
-      registry.register('adapter:-rest', DS.RESTAdapter);
+      container.register('transform:boolean', DS.BooleanTransform);
+      container.register('transform:date', DS.DateTransform);
+      container.register('transform:number', DS.NumberTransform);
+      container.register('transform:string', DS.StringTransform);
+      container.register('serializer:-default', DS.JSONSerializer);
+      container.register('serializer:-rest', DS.RESTSerializer);
+      container.register('adapter:-rest', DS.RESTAdapter);
     }
 
     for (var i = fullNames.length; i > 0; i--) {
