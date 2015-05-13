@@ -298,15 +298,14 @@ define('ember-mocha/mocha-module', ['exports', 'mocha', 'ember', 'ember-test-hel
   }
 
 });
-define('ember-test-helpers', ['exports', 'ember', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-module', 'ember-test-helpers/test-module-for-component', 'ember-test-helpers/test-module-for-model', 'ember-test-helpers/test-module-for-integration', 'ember-test-helpers/test-context', 'ember-test-helpers/test-resolver'], function (exports, Ember, isolatedContainer, TestModule, TestModuleForComponent, TestModuleForModel, TestModuleForIntegration, test_context, test_resolver) {
+define('ember-test-helpers', ['exports', 'ember', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-module', 'ember-test-helpers/test-module-for-component', 'ember-test-helpers/test-module-for-model', 'ember-test-helpers/test-context', 'ember-test-helpers/test-resolver'], function (exports, Ember, isolated_container, TestModule, TestModuleForComponent, TestModuleForModel, test_context, test_resolver) {
 
   'use strict';
 
-  Object.defineProperty(exports, 'isolatedContainer', { enumerable: true, get: function () { return isolatedContainer['default']; }});
+  Object.defineProperty(exports, 'isolatedContainer', { enumerable: true, get: function () { return isolated_container.isolatedContainer; }});
   Object.defineProperty(exports, 'TestModule', { enumerable: true, get: function () { return TestModule['default']; }});
   Object.defineProperty(exports, 'TestModuleForComponent', { enumerable: true, get: function () { return TestModuleForComponent['default']; }});
   Object.defineProperty(exports, 'TestModuleForModel', { enumerable: true, get: function () { return TestModuleForModel['default']; }});
-  Object.defineProperty(exports, 'TestModuleForIntegration', { enumerable: true, get: function () { return TestModuleForIntegration['default']; }});
   Object.defineProperty(exports, 'getContext', { enumerable: true, get: function () { return test_context.getContext; }});
   Object.defineProperty(exports, 'setContext', { enumerable: true, get: function () { return test_context.setContext; }});
   Object.defineProperty(exports, 'setResolver', { enumerable: true, get: function () { return test_resolver.setResolver; }});
@@ -317,6 +316,9 @@ define('ember-test-helpers', ['exports', 'ember', 'ember-test-helpers/isolated-c
 define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/test-resolver', 'ember'], function (exports, test_resolver, Ember) {
 
   'use strict';
+
+  exports.isolatedRegistry = isolatedRegistry;
+  exports.isolatedContainer = isolatedContainer;
 
   function exposeRegistryMethodsWithoutDeprecations(container) {
     var methods = [
@@ -344,16 +346,17 @@ define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/
     }
   }
 
-  function isolatedContainer(fullNames) {
+  function isolatedRegistry(fullNames) {
     var resolver = test_resolver.getResolver();
     var container;
+    var registry;
 
     var normalize = function(fullName) {
       return resolver.normalize(fullName);
     };
 
     if (Ember['default'].Registry) {
-      var registry = new Ember['default'].Registry();
+      registry = new Ember['default'].Registry();
       registry.normalizeFullName = normalize;
 
       container = registry.container();
@@ -383,16 +386,30 @@ define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/
     container.register('view:select', Ember['default'].Select);
     container.register('route:basic', Ember['default'].Route, { instantiate: false });
 
+    // added in Glimmer
+    container.register('component:-link-to', Ember['default'].LinkView);
+    container.register('component:-text-field', Ember['default'].TextField);
+    container.register('component:-text-area', Ember['default'].TextArea);
+    container.register('component:-checkbox', Ember['default'].Checkbox);
+
+    if (Ember['default']._LegacyEachView) {
+      container.register('view:-legacy-each', Ember['default']._LegacyEachView);
+    }
+
     var globalContext = typeof global === 'object' && global || self;
     if (globalContext.DS) {
       var DS = globalContext.DS;
-      container.register('transform:boolean', DS.BooleanTransform);
-      container.register('transform:date', DS.DateTransform);
-      container.register('transform:number', DS.NumberTransform);
-      container.register('transform:string', DS.StringTransform);
-      container.register('serializer:-default', DS.JSONSerializer);
-      container.register('serializer:-rest', DS.RESTSerializer);
-      container.register('adapter:-rest', DS.RESTAdapter);
+      if (DS._setupContainer) {
+        DS._setupContainer(container);
+      } else {
+        container.register('transform:boolean', DS.BooleanTransform);
+        container.register('transform:date', DS.DateTransform);
+        container.register('transform:number', DS.NumberTransform);
+        container.register('transform:string', DS.StringTransform);
+        container.register('serializer:-default', DS.JSONSerializer);
+        container.register('serializer:-rest', DS.RESTSerializer);
+        container.register('adapter:-rest', DS.RESTAdapter);
+      }
     }
 
     for (var i = fullNames.length; i > 0; i--) {
@@ -400,9 +417,15 @@ define('ember-test-helpers/isolated-container', ['exports', 'ember-test-helpers/
       var normalizedFullName = resolver.normalize(fullName);
       container.register(fullName, resolver.resolve(normalizedFullName));
     }
-    return container;
+    return {
+      container: container,
+      registry: registry
+    };
   }
-  exports['default'] = isolatedContainer;
+
+  function isolatedContainer(fullNames) {
+    return isolatedRegistry(fullNames).container;
+  }
 
 });
 define('ember-test-helpers/test-context', ['exports'], function (exports) {
@@ -429,14 +452,45 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
 
   exports['default'] = TestModule['default'].extend({
     init: function(componentName, description, callbacks) {
+      // Allow `description` to be omitted
+      if (!callbacks && typeof description === 'object') {
+        callbacks = description || {};
+        description = null;
+      }
+
       this.componentName = componentName;
 
-      this._super.call(this, 'component:' + componentName, description, callbacks);
+      if (callbacks.needs || callbacks.unit || callbacks.integration === false) {
+        this.isUnitTest = true;
+      } else if (callbacks.integration) {
+        this.isUnitTest = false;
+      } else {
+        Ember['default'].deprecate("the component:" + componentName + " test module is implicitly running in unit test mode, which will change to integration test mode by default in an upcoming version of ember-test-helpers. Add `unit: true` or a `needs:[]` list to explicitly opt in to unit test mode.");
+        this.isUnitTest = true;
+      }
 
-      this.setupSteps.push(this.setupComponent);
+      if (!this.isUnitTest) {
+        callbacks.integration = true;
+      }
+
+      if (description) {
+        this._super.call(this, 'component:' + componentName, description, callbacks);
+      } else {
+        this._super.call(this, 'component:' + componentName, callbacks);
+      }
+
+      if (this.isUnitTest) {
+        this.setupSteps.push(this.setupComponentUnitTest);
+      } else {
+        this.callbacks.subject = function() {
+          throw new Error("component integration tests do not support `subject()`.");
+        };
+        this.setupSteps.push(this.setupComponentIntegrationTest);
+        this.teardownSteps.push(this.teardownComponent);
+      }
     },
 
-    setupComponent: function() {
+    setupComponentUnitTest: function() {
       var _this = this;
       var resolver = test_resolver.getResolver();
       var container = this.container;
@@ -480,25 +534,9 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
 
         return subject.$.apply(subject, arguments);
       };
-    }
-  });
-
-});
-define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', 'ember-test-helpers/test-module', 'ember-test-helpers/test-resolver', 'ember-test-helpers/test-context'], function (exports, Ember, TestModule, test_resolver, test_context) {
-
-  'use strict';
-
-  exports['default'] = TestModule['default'].extend({
-
-    isIntegration: true,
-
-    init: function(name, description, callbacks) {
-      this._super.call(this, name, description, callbacks);
-      this.setupSteps.push(this.setupIntegrationHelpers);
-      this.teardownSteps.push(this.teardownView);
     },
 
-    setupIntegrationHelpers: function() {
+    setupComponentIntegrationTest: function() {
       var self = this;
       var context = this.context;
       context.dispatcher = Ember['default'].EventDispatcher.create();
@@ -506,25 +544,28 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', 'e
       this.actionHooks = {};
 
       context.render = function(template) {
+        if (!template) {
+          throw new Error("in a component integration test you must pass a template to `render()`");
+        }
         if (Ember['default'].isArray(template)) {
           template = template.join('');
         }
         if (typeof template === 'string') {
           template = Ember['default'].Handlebars.compile(template);
         }
-        self.view = Ember['default'].View.create({
+        self.component = Ember['default'].View.create({
           context: context,
           controller: self,
           template: template,
           container: self.container
         });
         Ember['default'].run(function() {
-          self.view.appendTo('#ember-testing');
+          self.component.appendTo('#ember-testing');
         });
       };
 
       context.$ = function() {
-        return self.view.$.apply(self.view, arguments);
+        return self.component.$.apply(self.component, arguments);
       };
 
       context.set = function(key, value) {
@@ -544,15 +585,12 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', 'e
     },
 
     setupContext: function() {
-
-      test_context.setContext({
-        container:  this.container,
-        factory: function() {},
-        dispatcher: null
-      });
-
-      this.context = test_context.getContext();
+      this._super.call(this);
+      if (!this.isUnitTest) {
+        this.context.factory = function() {};
+      }
     },
+
 
     send: function(actionName) {
       var hook = this.actionHooks[actionName];
@@ -562,14 +600,15 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', 'e
       hook.apply(this, Array.prototype.slice.call(arguments, 1));
     },
 
-    teardownView: function() {
-      var view = this.view;
-      if (view) {
+    teardownComponent: function() {
+      var component = this.component;
+      if (component) {
         Ember['default'].run(function() {
-          view.destroy();
+          component.destroy();
         });
       }
     }
+
 
   });
 
@@ -592,12 +631,6 @@ define('ember-test-helpers/test-module-for-model', ['exports', 'ember-test-helpe
       var defaultSubject = this.defaultSubject;
       var callbacks = this.callbacks;
       var modelName = this.modelName;
-
-      if (DS._setupContainer) {
-        DS._setupContainer(container);
-      } else {
-        container.register('store:main', DS.Store);
-      }
 
       var adapterFactory = container.lookupFactory('adapter:application');
       if (!adapterFactory) {
@@ -623,7 +656,7 @@ define('ember-test-helpers/test-module-for-model', ['exports', 'ember-test-helpe
   });
 
 });
-define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-context', 'klassy', 'ember-test-helpers/test-resolver'], function (exports, Ember, isolatedContainer, test_context, klassy, test_resolver) {
+define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helpers/isolated-container', 'ember-test-helpers/test-context', 'klassy', 'ember-test-helpers/test-resolver'], function (exports, Ember, isolated_container, test_context, klassy, test_resolver) {
 
   'use strict';
 
@@ -756,6 +789,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
 
       test_context.setContext({
         container:  this.container,
+        registry: this.registry,
         factory:    factory,
         dispatcher: null
       });
@@ -836,7 +870,9 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
 
 
     _setupIsolatedContainer: function() {
-      this.container = isolatedContainer['default'](this.needs);
+      var isolated = isolated_container.isolatedRegistry(this.needs);
+      this.container = isolated.container;
+      this.registry = isolated.registry;
     },
 
     _setupIntegratedContainer: function() {
