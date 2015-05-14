@@ -454,8 +454,10 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
     init: function(componentName, description, callbacks) {
       // Allow `description` to be omitted
       if (!callbacks && typeof description === 'object') {
-        callbacks = description || {};
+        callbacks = description;
         description = null;
+      } else if (!callbacks && !description) {
+        callbacks = {};
       }
 
       this.componentName = componentName;
@@ -1072,7 +1074,7 @@ define('mocha', ['exports'], function (exports) {
 
   'use strict';
 
-  /* globals mocha, describe, it */
+  /* globals mocha, describe, it, before, beforeEach, after, afterEach */
 
   exports.mocha = mocha;
   exports.describe = describe;
