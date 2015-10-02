@@ -353,7 +353,14 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
       } else if (callbacks.integration) {
         this.isUnitTest = false;
       } else {
-        Ember['default'].deprecate("the component:" + componentName + " test module is implicitly running in unit test mode, which will change to integration test mode by default in an upcoming version of ember-test-helpers. Add `unit: true` or a `needs:[]` list to explicitly opt in to unit test mode.");
+        Ember['default'].deprecate(
+          "the component:" + componentName + " test module is implicitly running in unit test mode, " +
+          "which will change to integration test mode by default in an upcoming version of " +
+          "ember-test-helpers. Add `unit: true` or a `needs:[]` list to explicitly opt in to unit " +
+          "test mode.",
+          false,
+          { id: 'ember-test-helpers.test-module-for-component.test-type', until: '0.6.0' }
+        );
         this.isUnitTest = true;
       }
 
@@ -430,7 +437,11 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
       };
 
       this.callbacks.append = function() {
-        Ember['default'].deprecate('this.append() is deprecated. Please use this.render() or this.$() instead.');
+        Ember['default'].deprecate(
+          'this.append() is deprecated. Please use this.render() or this.$() instead.',
+          false,
+          { id: 'ember-test-helpers.test-module-for-component.append', until: '0.6.0' }
+        );
         return context.$();
       };
 
@@ -727,10 +738,25 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
         container:  this.container,
         registry: this.registry,
         factory:    factory,
-        dispatcher: null
+        dispatcher: null,
+        register: function() {
+          var target = this.registry || this.container;
+          return target.register.apply(target, arguments);
+        },
+        inject: {}
       });
 
-      this.context = test_context.getContext();
+      var context = this.context = test_context.getContext();
+
+      if (Ember['default'].inject) {
+        var keys = (Object.keys || Ember['default'].keys)(Ember['default'].inject);
+        keys.forEach(function(typeName) {
+          context.inject[typeName] = function(name, opts) {
+            var alias = (opts && opts.as) || name;
+            Ember['default'].set(context, alias, context.container.lookup(typeName + ':' + name));
+          };
+        });
+      }
     },
 
     setupTestElements: function() {
@@ -1029,7 +1055,7 @@ define('mocha', ['exports'], function (exports) {
 
   'use strict';
 
-  /*global mocha, describe, it, before, after */
+  /*global mocha, describe, context, it, before, after */
 
 
   /**
@@ -1100,6 +1126,7 @@ define('mocha', ['exports'], function (exports) {
 
   exports.mocha = mocha;
   exports.describe = describe;
+  exports.context = context;
   exports.it = it;
   exports.before = before;
   exports.beforeEach = beforeEach;
