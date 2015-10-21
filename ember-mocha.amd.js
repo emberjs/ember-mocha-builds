@@ -246,6 +246,15 @@ define('ember-test-helpers/build-registry', ['exports'], function (exports) {
       registry = new Ember.Registry({
         fallback: fallbackRegistry
       });
+
+      // these properties are set on the fallback registry by `buildRegistry`
+      // and on the primary registry within the ApplicationInstance constructor
+      // but we need to manually recreate them since ApplicationInstance's are not
+      // exposed externally
+      registry.normalizeFullName = fallbackRegistry.normalizeFullName;
+      registry.makeToString = fallbackRegistry.makeToString;
+      registry.describe = fallbackRegistry.describe;
+
       container = registry.container();
       exposeRegistryMethodsWithoutDeprecations(container);
     } else {
@@ -302,11 +311,6 @@ define('ember-test-helpers/has-ember-version', ['exports', 'ember'], function (e
     return actualMajor > major || (actualMajor === major && actualMinor >= minor);
   }
   exports['default'] = hasEmberVersion;
-
-});
-define('ember-test-helpers/isolated-container', function () {
-
-	'use strict';
 
 });
 define('ember-test-helpers/test-context', ['exports'], function (exports) {
@@ -381,12 +385,12 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
           throw new Error("component integration tests do not support `subject()`.");
         };
         this.setupSteps.push(this.setupComponentIntegrationTest);
-        this.teardownSteps.push(this.teardownComponent);
+        this.teardownSteps.unshift(this.teardownComponent);
       }
 
       if (Ember['default'].View && Ember['default'].View.views) {
         this.setupSteps.push(this._aliasViewRegistry);
-        this.teardownSteps.push(this._resetViewRegistry);
+        this.teardownSteps.unshift(this._resetViewRegistry);
       }
     },
 
@@ -596,7 +600,7 @@ define('ember-test-helpers/test-module-for-model', ['exports', 'ember-test-helpe
   });
 
 });
-define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helpers/test-context', 'klassy', 'ember-test-helpers/test-resolver', 'ember-test-helpers/build-registry', 'ember-test-helpers/has-ember-version'], function (exports, Ember, test_context, klassy, test_resolver, buildRegistry, hasEmberVersion) {
+define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helpers/test-context', 'klassy', 'ember-test-helpers/test-resolver', 'ember-test-helpers/build-registry', 'ember-test-helpers/has-ember-version', 'ember-test-helpers/wait'], function (exports, Ember, test_context, klassy, test_resolver, buildRegistry, hasEmberVersion, wait) {
 
   'use strict';
 
@@ -653,6 +657,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       this.setupSteps.push(this.setupContainer);
       this.setupSteps.push(this.setupContext);
       this.setupSteps.push(this.setupTestElements);
+      this.setupSteps.push(this.setupAJAXListeners);
 
       if (this.callbacks.setup) {
         this.contextualizedSetupSteps.push( this.callbacks.setup );
@@ -673,6 +678,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       this.teardownSteps.push(this.teardownContainer);
       this.teardownSteps.push(this.teardownContext);
       this.teardownSteps.push(this.teardownTestElements);
+      this.teardownSteps.push(this.teardownAJAXListeners);
 
       if (this.callbacks.afterTeardown) {
         this.teardownSteps.push( this.callbacks.afterTeardown );
@@ -765,6 +771,10 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       }
     },
 
+    setupAJAXListeners: function() {
+      wait._setupAJAXHooks();
+    },
+
     teardownSubject: function() {
       var subject = this.cache.subject;
 
@@ -802,6 +812,10 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       if (Ember['default'].View && Ember['default'].View.views) {
         Ember['default'].View.views = {};
       }
+    },
+
+    teardownAJAXListeners: function() {
+      wait._teardownAJAXHooks();
     },
 
     defaultSubject: function(options, factory) {
@@ -896,6 +910,64 @@ define('ember-test-helpers/test-resolver', ['exports'], function (exports) {
     if (__resolver__ == null) throw new Error('you must set a resolver with `testResolver.set(resolver)`');
     return __resolver__;
   }
+
+});
+define('ember-test-helpers/wait', ['exports', 'ember'], function (exports, Ember) {
+
+  'use strict';
+
+  exports._teardownAJAXHooks = _teardownAJAXHooks;
+  exports._setupAJAXHooks = _setupAJAXHooks;
+
+  var requests;
+  function incrementAjaxPendingRequests(_, xhr) {
+    requests.push(xhr);
+  }
+
+  function decrementAjaxPendingRequests(_, xhr) {
+    for (var i = 0;i < requests.length;i++) {
+      if (xhr === requests[i]) {
+        requests.splice(i, 1);
+      }
+    }
+  }
+
+  function _teardownAJAXHooks() {
+    jQuery(document).off('ajaxSend', incrementAjaxPendingRequests);
+    jQuery(document).off('ajaxComplete', decrementAjaxPendingRequests);
+  }
+
+  function _setupAJAXHooks() {
+    requests = [];
+
+    jQuery(document).on('ajaxSend', incrementAjaxPendingRequests);
+    jQuery(document).on('ajaxComplete', decrementAjaxPendingRequests);
+  }
+
+  function wait(_options) {
+    var options = _options || {};
+    var waitForTimers = options.hasOwnProperty('waitForTimers') ? options.waitForTimers : true;
+    var waitForAJAX = options.hasOwnProperty('waitForAJAX') ? options.waitForAJAX : true;
+
+    return new Ember['default'].RSVP.Promise(function(resolve) {
+      var watcher = self.setInterval(function() {
+        if (waitForTimers && (Ember['default'].run.hasScheduledTimers() || Ember['default'].run.currentRunLoop)) {
+          return;
+        }
+
+        if (waitForAJAX && requests && requests.length > 0) {
+          return;
+        }
+
+        // Stop polling
+        self.clearInterval(watcher);
+
+        // Synchronously resolve the promise
+        Ember['default'].run(null, resolve);
+      }, 10);
+    });
+  }
+  exports['default'] = wait;
 
 });
 define('klassy', ['exports'], function (exports) {
