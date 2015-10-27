@@ -7,11 +7,13 @@ define('chai', ['exports'], function (exports) {
 	var expect = chai.expect;
 	var assert = chai.assert;
 
+	var config = chai.config;
 	var use = chai.use;
 	var Assertion = chai.Assertion;
 
 	exports.expect = expect;
 	exports.assert = assert;
+	exports.config = config;
 	exports.use = use;
 	exports.Assertion = Assertion;
 
