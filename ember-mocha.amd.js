@@ -195,7 +195,7 @@ define('ember-test-helpers', ['exports', 'ember', 'ember-test-helpers/test-modul
   Ember['default'].testing = true;
 
 });
-define('ember-test-helpers/build-registry', ['exports'], function (exports) {
+define('ember-test-helpers/build-registry', ['exports', 'ember'], function (exports, Ember) {
 
   'use strict';
 
@@ -227,9 +227,17 @@ define('ember-test-helpers/build-registry', ['exports'], function (exports) {
     }
   }
 
+  var Owner = (function() {
+    if (Ember['default']._RegistryProxyMixin && Ember['default']._ContainerProxyMixin) {
+      return Ember['default'].Object.extend(Ember['default']._RegistryProxyMixin, Ember['default']._ContainerProxyMixin);
+    }
+
+    return Ember['default'].Object.extend();
+  })();
+
   exports['default'] = function(resolver) {
     var fallbackRegistry, registry, container;
-    var namespace = Ember.Object.create({
+    var namespace = Ember['default'].Object.create({
       Resolver: { create: function() { return resolver; } }
     });
 
@@ -241,11 +249,11 @@ define('ember-test-helpers/build-registry', ['exports'], function (exports) {
       }
     }
 
-    if (Ember.Application.buildRegistry) {
-      fallbackRegistry = Ember.Application.buildRegistry(namespace);
-      fallbackRegistry.register('component-lookup:main', Ember.ComponentLookup);
+    if (Ember['default'].Application.buildRegistry) {
+      fallbackRegistry = Ember['default'].Application.buildRegistry(namespace);
+      fallbackRegistry.register('component-lookup:main', Ember['default'].ComponentLookup);
 
-      registry = new Ember.Registry({
+      registry = new Ember['default'].Registry({
         fallback: fallbackRegistry
       });
 
@@ -257,11 +265,18 @@ define('ember-test-helpers/build-registry', ['exports'], function (exports) {
       registry.makeToString = fallbackRegistry.makeToString;
       registry.describe = fallbackRegistry.describe;
 
-      container = registry.container();
+      var owner = Owner.create({
+        __registry__: registry,
+        __container__: null
+      });
+
+      container = registry.container({ owner: owner });
+      owner.__container__ = container;
+
       exposeRegistryMethodsWithoutDeprecations(container);
     } else {
-      container = Ember.Application.buildContainer(namespace);
-      container.register('component-lookup:main', Ember.ComponentLookup);
+      container = Ember['default'].Application.buildContainer(namespace);
+      container.register('component-lookup:main', Ember['default'].ComponentLookup);
     }
 
     // Ember 1.10.0 did not properly add `view:toplevel` or `view:default`
@@ -269,14 +284,14 @@ define('ember-test-helpers/build-registry', ['exports'], function (exports) {
     //
     // Ember 2.0.0 removed Ember.View as public API, so only do this when
     // Ember.View is present
-    if (Ember.View) {
-      register('view:toplevel', Ember.View.extend());
+    if (Ember['default'].View) {
+      register('view:toplevel', Ember['default'].View.extend());
     }
 
     // Ember 2.0.0 removed Ember._MetamorphView from the Ember global, so only
     // do this when present
-    if (Ember._MetamorphView) {
-      register('view:default', Ember._MetamorphView);
+    if (Ember['default']._MetamorphView) {
+      register('view:default', Ember['default']._MetamorphView);
     }
 
     var globalContext = typeof global === 'object' && global || self;
@@ -755,6 +770,10 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       });
 
       var context = this.context = test_context.getContext();
+
+      if (Ember['default'].setOwner) {
+        Ember['default'].setOwner(context, this.container.owner);
+      }
 
       if (Ember['default'].inject) {
         var keys = (Object.keys || Ember['default'].keys)(Ember['default'].inject);
