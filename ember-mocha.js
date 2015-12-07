@@ -471,6 +471,8 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
   'use strict';
 
   exports['default'] = TestModule['default'].extend({
+    isComponentTestModule: true,
+
     init: function(componentName, description, callbacks) {
       // Allow `description` to be omitted
       if (!callbacks && typeof description === 'object') {
@@ -498,17 +500,17 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
         this.isUnitTest = true;
       }
 
-      if (!this.isUnitTest) {
-        callbacks.integration = true;
-      }
-
       if (description) {
         this._super.call(this, 'component:' + componentName, description, callbacks);
       } else {
         this._super.call(this, 'component:' + componentName, callbacks);
       }
 
-      if (this.isUnitTest) {
+      if (!this.isUnitTest && !this.isLegacy) {
+        callbacks.integration = true;
+      }
+
+      if (this.isUnitTest || this.isLegacy) {
         this.setupSteps.push(this.setupComponentUnitTest);
       } else {
         this.callbacks.subject = function() {
@@ -667,7 +669,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', 'ember-test-h
         (this.registry || this.container).injection('component', '_viewRegistry', '-view-registry:main');
       }
 
-      if (!this.isUnitTest) {
+      if (!this.isUnitTest && !this.isLegacy) {
         this.context.factory = function() {};
       }
     },
@@ -753,7 +755,16 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       }
 
       if (this.callbacks.integration) {
-        this.isIntegration = callbacks.integration;
+        if (this.isComponentTestModule) {
+          this.isLegacy = (callbacks.integration === 'legacy');
+          this.isIntegration = (callbacks.integration !== 'legacy');
+        } else {
+          if (callbacks.integration === 'legacy') {
+            throw new Error('`integration: \'legacy\'` is only valid for component tests.');
+          }
+          this.isIntegration = true;
+        }
+
         delete callbacks.integration;
       }
 
@@ -855,7 +866,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
     },
 
     setupContainer: function() {
-      if (this.isIntegration) {
+      if (this.isIntegration || this.isLegacy) {
         this._setupIntegratedContainer();
       } else {
         this._setupIsolatedContainer();
@@ -986,9 +997,14 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
       }
     },
 
-    _setupContainer: function() {
+    _setupContainer: function(isolated) {
       var resolver = test_resolver.getResolver();
-      var items = buildRegistry['default'](resolver);
+
+      var items = buildRegistry['default'](!isolated ? resolver : Object.create(resolver, {
+        resolve: {
+          value: function() {}
+        }
+      }));
 
       this.container = items.container;
       this.registry = items.registry;
@@ -1003,7 +1019,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
 
     _setupIsolatedContainer: function() {
       var resolver = test_resolver.getResolver();
-      this._setupContainer();
+      this._setupContainer(true);
 
       var thingToRegisterWith = this.registry || this.container;
 
@@ -1013,9 +1029,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', 'ember-test-helper
         thingToRegisterWith.register(fullName, resolver.resolve(normalizedFullName));
       }
 
-      if (this.registry) {
-        this.registry.fallback.resolver = function() {};
-      } else {
+      if (!this.registry) {
         this.container.resolver = function() {};
       }
     },
