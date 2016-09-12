@@ -243,7 +243,7 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha'], function (expo
     };
   }
 });
-define('ember-mocha/setup-test-factory', ['exports', 'mocha', 'ember-test-helpers'], function (exports, _mocha, _emberTestHelpers) {
+define('ember-mocha/setup-test-factory', ['exports', 'mocha'], function (exports, _mocha) {
   'use strict';
 
   exports['default'] = function (Constructor) {
@@ -255,14 +255,9 @@ define('ember-mocha/setup-test-factory', ['exports', 'mocha', 'ember-test-helper
       });
 
       _mocha.beforeEach(function () {
-        var _this = this;
+        module.setContext(this);
 
-        return module.setup().then(function () {
-          var context = _emberTestHelpers.getContext();
-          Object.keys(context).forEach(function (key) {
-            _this[key] = context[key];
-          });
-        });
+        return module.setup();
       });
 
       _mocha.afterEach(function () {
