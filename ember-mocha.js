@@ -193,7 +193,7 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha'], function (expo
   exports.createSkip = createSkip;
 
   function createModule(Constructor, name, description, callbacks, tests, method) {
-    _ember['default'].deprecate('The describeModule(), describeModel() and describeComponent() methods have been deprecated in favor of ' + 'setupTest(), setupModelTest() and setupComponentTest().', false, { id: 'ember-mocha.describe-helpers', until: '1.0.0' });
+    _ember['default'].deprecate('The describeModule(), describeModel() and describeComponent() methods have been deprecated in favor of ' + 'setupTest(), setupModelTest() and setupComponentTest().', false, { id: 'ember-mocha.describe-helpers', until: '1.0.0', url: 'https://github.com/emberjs/ember-mocha#upgrading' });
 
     var module;
 
