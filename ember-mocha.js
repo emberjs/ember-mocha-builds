@@ -185,7 +185,7 @@ define('ember-mocha/describe-module', ['exports', './mocha-module', 'ember-test-
 
   exports['default'] = describeModule;
 });
-define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha'], function (exports, _ember, _mocha) {
+define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha', 'ember-test-helpers'], function (exports, _ember, _mocha, _emberTestHelpers) {
   'use strict';
 
   exports.createModule = createModule;
@@ -212,9 +212,14 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha'], function (expo
 
     function moduleBody() {
       _mocha.beforeEach(function () {
-        module.setContext(this);
+        var _this = this;
 
-        return module.setup();
+        return module.setup().then(function () {
+          var context = _emberTestHelpers.getContext();
+          Object.keys(context).forEach(function (key) {
+            _this[key] = context[key];
+          });
+        });
       });
 
       _mocha.afterEach(function () {
@@ -243,7 +248,7 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha'], function (expo
     };
   }
 });
-define('ember-mocha/setup-test-factory', ['exports', 'mocha'], function (exports, _mocha) {
+define('ember-mocha/setup-test-factory', ['exports', 'mocha', 'ember-test-helpers'], function (exports, _mocha, _emberTestHelpers) {
   'use strict';
 
   exports['default'] = function (Constructor) {
@@ -255,9 +260,14 @@ define('ember-mocha/setup-test-factory', ['exports', 'mocha'], function (exports
       });
 
       _mocha.beforeEach(function () {
-        module.setContext(this);
+        var _this = this;
 
-        return module.setup();
+        return module.setup().then(function () {
+          var context = _emberTestHelpers.getContext();
+          Object.keys(context).forEach(function (key) {
+            _this[key] = context[key];
+          });
+        });
       });
 
       _mocha.afterEach(function () {
@@ -1915,6 +1925,10 @@ window.describeComponent = emberMocha.describeComponent;
 window.describeModel = emberMocha.describeModel;
 window.it = emberMocha.it;
 window.setResolver = emberMocha.setResolver;
+window.setupTest = emberMocha.setupTest;
+window.setupAcceptanceTest = emberMocha.setupAcceptanceTest;
+window.setupComponentTest = emberMocha.setupComponentTest;
+window.setupModelTest = emberMocha.setupModelTest;
 
 })();
 //# sourceMappingURL=ember-mocha.map
