@@ -1,116 +1,323 @@
 (function() {
 
-var define, requireModule, require, requirejs;
+var loader, define, requireModule, require, requirejs;
 
-(function() {
+(function (global) {
+  'use strict';
+
+  var heimdall = global.heimdall;
+
+  function dict() {
+    var obj = Object.create(null);
+    obj['__'] = undefined;
+    delete obj['__'];
+    return obj;
+  }
+
+  // Save off the original values of these globals, so we can restore them if someone asks us to
+  var oldGlobals = {
+    loader: loader,
+    define: define,
+    requireModule: requireModule,
+    require: require,
+    requirejs: requirejs
+  };
+
+  requirejs = require = requireModule = function (name) {
+    var pending = [];
+    var mod = findModule(name, '(require)', pending);
+
+    for (var i = pending.length - 1; i >= 0; i--) {
+      pending[i].exports();
+    }
+
+    return mod.module.exports;
+  };
+
+  loader = {
+    noConflict: function (aliases) {
+      var oldName, newName;
+
+      for (oldName in aliases) {
+        if (aliases.hasOwnProperty(oldName)) {
+          if (oldGlobals.hasOwnProperty(oldName)) {
+            newName = aliases[oldName];
+
+            global[newName] = global[oldName];
+            global[oldName] = oldGlobals[oldName];
+          }
+        }
+      }
+    }
+  };
 
   var _isArray;
   if (!Array.isArray) {
     _isArray = function (x) {
-      return Object.prototype.toString.call(x) === "[object Array]";
+      return Object.prototype.toString.call(x) === '[object Array]';
     };
   } else {
     _isArray = Array.isArray;
   }
-  
-  var registry = {}, seen = {}, state = {};
-  var FAILED = false;
 
-  define = function(name, deps, callback) {
-  
-    if (!_isArray(deps)) {
-      callback = deps;
-      deps     =  [];
-    }
-  
-    registry[name] = {
-      deps: deps,
-      callback: callback
-    };
-  };
+  var registry = dict();
+  var seen = dict();
 
-  function reify(deps, name, seen) {
-    var length = deps.length;
-    var reified = new Array(length);
-    var dep;
-    var exports;
+  var uuid = 0;
 
-    for (var i = 0, l = length; i < l; i++) {
-      dep = deps[i];
-      if (dep === 'exports') {
-        exports = reified[i] = seen;
-      } else {
-        reified[i] = require(resolve(dep, name));
-      }
-    }
-
-    return {
-      deps: reified,
-      exports: exports
-    };
+  function unsupportedModule(length) {
+    throw new Error('an unsupported module was defined, expected `define(name, deps, module)` instead got: `' + length + '` arguments to define`');
   }
 
-  requirejs = require = requireModule = function(name) {
-    if (state[name] !== FAILED &&
-        seen.hasOwnProperty(name)) {
-      return seen[name];
+  var defaultDeps = ['require', 'exports', 'module'];
+
+  function Module(name, deps, callback, alias) {
+    this.id = uuid++;
+    this.name = name;
+    this.deps = !deps.length && callback.length ? defaultDeps : deps;
+    this.module = { exports: {} };
+    this.callback = callback;
+    this.hasExportsAsDep = false;
+    this.isAlias = alias;
+    this.reified = new Array(deps.length);
+
+    /*
+       Each module normally passes through these states, in order:
+         new       : initial state
+         pending   : this module is scheduled to be executed
+         reifying  : this module's dependencies are being executed
+         reified   : this module's dependencies finished executing successfully
+         errored   : this module's dependencies failed to execute
+         finalized : this module executed successfully
+     */
+    this.state = 'new';
+  }
+
+  Module.prototype.makeDefaultExport = function () {
+    var exports = this.module.exports;
+    if (exports !== null && (typeof exports === 'object' || typeof exports === 'function') && exports['default'] === undefined && Object.isExtensible(exports)) {
+      exports['default'] = exports;
     }
-
-    if (!registry[name]) {
-      throw new Error('Could not find module ' + name);
-    }
-
-    var mod = registry[name];
-    var reified;
-    var module;
-    var loaded = false;
-
-    seen[name] = { }; // placeholder for run-time cycles
-
-    try {
-      reified = reify(mod.deps, name, seen[name]);
-      module = mod.callback.apply(this, reified.deps);
-      loaded = true;
-    } finally {
-      if (!loaded) {
-        state[name] = FAILED;
-      }
-    }
-
-    return reified.exports ? seen[name] : (seen[name] = module);
   };
 
+  Module.prototype.exports = function () {
+    // if finalized, there is no work to do. If reifying, there is a
+    // circular dependency so we must return our (partial) exports.
+    if (this.state === 'finalized' || this.state === 'reifying') {
+      return this.module.exports;
+    }
+
+    if (loader.wrapModules) {
+      this.callback = loader.wrapModules(this.name, this.callback);
+    }
+
+    this.reify();
+
+    var result = this.callback.apply(this, this.reified);
+    this.state = 'finalized';
+
+    if (!(this.hasExportsAsDep && result === undefined)) {
+      this.module.exports = result;
+    }
+    this.makeDefaultExport();
+    return this.module.exports;
+  };
+
+  Module.prototype.unsee = function () {
+    this.state = 'new';
+    this.module = { exports: {} };
+  };
+
+  Module.prototype.reify = function () {
+    if (this.state === 'reified') {
+      return;
+    }
+    this.state = 'reifying';
+    try {
+      this.reified = this._reify();
+      this.state = 'reified';
+    } finally {
+      if (this.state === 'reifying') {
+        this.state = 'errored';
+      }
+    }
+  };
+
+  Module.prototype._reify = function () {
+    var reified = this.reified.slice();
+    for (var i = 0; i < reified.length; i++) {
+      var mod = reified[i];
+      reified[i] = mod.exports ? mod.exports : mod.module.exports();
+    }
+    return reified;
+  };
+
+  Module.prototype.findDeps = function (pending) {
+    if (this.state !== 'new') {
+      return;
+    }
+
+    this.state = 'pending';
+
+    var deps = this.deps;
+
+    for (var i = 0; i < deps.length; i++) {
+      var dep = deps[i];
+      var entry = this.reified[i] = { exports: undefined, module: undefined };
+      if (dep === 'exports') {
+        this.hasExportsAsDep = true;
+        entry.exports = this.module.exports;
+      } else if (dep === 'require') {
+        entry.exports = this.makeRequire();
+      } else if (dep === 'module') {
+        entry.exports = this.module;
+      } else {
+        entry.module = findModule(resolve(dep, this.name), this.name, pending);
+      }
+    }
+  };
+
+  Module.prototype.makeRequire = function () {
+    var name = this.name;
+    var r = function (dep) {
+      return require(resolve(dep, name));
+    };
+    r['default'] = r;
+    r.has = function (dep) {
+      return has(resolve(dep, name));
+    };
+    return r;
+  };
+
+  define = function (name, deps, callback) {
+    var module = registry[name];
+
+    // If a module for this name has already been defined and is in any state
+    // other than `new` (meaning it has been or is currently being required),
+    // then we return early to avoid redefinition.
+    if (module && module.state !== 'new') {
+      return;
+    }
+
+    if (arguments.length < 2) {
+      unsupportedModule(arguments.length);
+    }
+
+    if (!_isArray(deps)) {
+      callback = deps;
+      deps = [];
+    }
+
+    if (callback instanceof Alias) {
+      registry[name] = new Module(callback.name, deps, callback, true);
+    } else {
+      registry[name] = new Module(name, deps, callback, false);
+    }
+  };
+
+  // we don't support all of AMD
+  // define.amd = {};
+
+  function Alias(path) {
+    this.name = path;
+  }
+
+  define.alias = function (path, target) {
+    if (arguments.length === 2) {
+      return define(target, new Alias(path));
+    }
+
+    return new Alias(path);
+  };
+
+  function missingModule(name, referrer) {
+    throw new Error('Could not find module `' + name + '` imported from `' + referrer + '`');
+  }
+
+  function findModule(name, referrer, pending) {
+    var mod = registry[name] || registry[name + '/index'];
+
+    while (mod && mod.isAlias) {
+      mod = registry[mod.name];
+    }
+
+    if (!mod) {
+      missingModule(name, referrer);
+    }
+
+    if (pending && mod.state !== 'pending' && mod.state !== 'finalized') {
+      mod.findDeps(pending);
+      pending.push(mod);
+    }
+    return mod;
+  }
+
   function resolve(child, name) {
-    if (child.charAt(0) !== '.') { return child; }
+    if (child.charAt(0) !== '.') {
+      return child;
+    }
 
     var parts = child.split('/');
     var nameParts = name.split('/');
-    var parentBase;
-
-    if (nameParts.length === 1) {
-      parentBase = nameParts;
-    } else {
-      parentBase = nameParts.slice(0, -1);
-    }
+    var parentBase = nameParts.slice(0, -1);
 
     for (var i = 0, l = parts.length; i < l; i++) {
       var part = parts[i];
 
-      if (part === '..') { parentBase.pop(); }
-      else if (part === '.') { continue; }
-      else { parentBase.push(part); }
+      if (part === '..') {
+        if (parentBase.length === 0) {
+          throw new Error('Cannot access parent module of root');
+        }
+        parentBase.pop();
+      } else if (part === '.') {
+        continue;
+      } else {
+        parentBase.push(part);
+      }
     }
 
     return parentBase.join('/');
   }
 
-  requirejs.entries = requirejs._eak_seen = registry;
-  requirejs.clear = function(){
-    requirejs.entries = requirejs._eak_seen = registry = {};
-    seen = state = {};
-  };
-})();
+  function has(name) {
+    return !!(registry[name] || registry[name + '/index']);
+  }
 
+  requirejs.entries = requirejs._eak_seen = registry;
+  requirejs.has = has;
+  requirejs.unsee = function (moduleName) {
+    findModule(moduleName, '(unsee)', false).unsee();
+  };
+
+  requirejs.clear = function () {
+    requirejs.entries = requirejs._eak_seen = registry = dict();
+    seen = dict();
+  };
+
+  // This code primes the JS engine for good performance by warming the
+  // JIT compiler for these functions.
+  define('foo', function () {});
+  define('foo/bar', [], function () {});
+  define('foo/asdf', ['module', 'exports', 'require'], function (module, exports, require) {
+    if (require.has('foo/bar')) {
+      require('foo/bar');
+    }
+  });
+  define('foo/baz', [], define.alias('foo'));
+  define('foo/quz', define.alias('foo'));
+  define.alias('foo', 'foo/qux');
+  define('foo/bar', ['foo', './quz', './baz', './asdf', './bar', '../foo'], function () {});
+  define('foo/main', ['foo/bar'], function () {});
+
+  require('foo/main');
+  require.unsee('foo/bar');
+
+  requirejs.clear();
+
+  if (typeof exports === 'object' && typeof module === 'object' && module.exports) {
+    module.exports = { require: require, define: define };
+  }
+})(this);
 define('ember-mocha', ['exports', 'ember-mocha/describe-module', 'ember-mocha/describe-component', 'ember-mocha/describe-model', 'ember-mocha/setup-test-factory', 'mocha', 'ember-test-helpers'], function (exports, _emberMochaDescribeModule, _emberMochaDescribeComponent, _emberMochaDescribeModel, _emberMochaSetupTestFactory, _mocha, _emberTestHelpers) {
   'use strict';
 
@@ -209,6 +416,10 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha', 'ember-test-hel
         return module.teardown();
       });
 
+      _mocha.after(function () {
+        module = null;
+      });
+
       tests = tests || function () {};
       tests.call(this);
     }
@@ -255,6 +466,10 @@ define('ember-mocha/setup-test-factory', ['exports', 'mocha', 'ember-test-helper
 
       _mocha.afterEach(function () {
         return module.teardown();
+      });
+
+      _mocha.after(function () {
+        module = null;
       });
     };
   };
@@ -555,8 +770,8 @@ define('ember-test-helpers/abstract-test-module', ['exports', './wait', './test-
 
   exports['default'] = _default;
 });
-define('ember-test-helpers/build-registry', ['exports', 'ember'], function (exports, _ember) {
-  /* globals global, self, requirejs, require */
+define('ember-test-helpers/build-registry', ['exports', 'require', 'ember'], function (exports, _require, _ember) {
+  /* globals global, self, requirejs */
 
   'use strict';
 
@@ -595,7 +810,7 @@ define('ember-test-helpers/build-registry', ['exports', 'ember'], function (expo
     function register(name, factory) {
       var thingToRegisterWith = registry || container;
 
-      if (!container.lookupFactory(name)) {
+      if (!(container.factoryFor ? container.factoryFor(name) : container.lookupFactory(name))) {
         thingToRegisterWith.register(name, factory);
       }
     }
@@ -656,7 +871,7 @@ define('ember-test-helpers/build-registry', ['exports', 'ember'], function (expo
       // available on the globalContext and hence ember-data wouldn't be setup
       // correctly for the tests; that's why we import and call setupContainer
       // here; also see https://github.com/emberjs/data/issues/4071 for context
-      var setupContainer = require('ember-data/setup-container')['default'];
+      var setupContainer = _require['default']('ember-data/setup-container')['default'];
       setupContainer(registry || container);
     } else if (globalContext.DS) {
       var DS = globalContext.DS;
@@ -795,12 +1010,13 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
       }
 
       var integrationOption = callbacks.integration;
+      var hasNeeds = Array.isArray(callbacks.needs);
 
       _TestModule.call(this, 'component:' + componentName, description, callbacks);
 
       this.componentName = componentName;
 
-      if (callbacks.needs || callbacks.unit || integrationOption === false) {
+      if (hasNeeds || callbacks.unit || integrationOption === false) {
         this.isUnitTest = true;
       } else if (integrationOption) {
         this.isUnitTest = false;
@@ -910,7 +1126,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
 
       // only setup the injection if we are running against a version
       // of Ember that has `-view-registry:main` (Ember >= 1.12)
-      if (this.container.lookupFactory('-view-registry:main')) {
+      if (this.container.factoryFor ? this.container.factoryFor('-view-registry:main') : this.container.lookupFactory('-view-registry:main')) {
         (this.registry || this.container).injection('component', '_viewRegistry', '-view-registry:main');
       }
 
@@ -941,7 +1157,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
     context.dispatcher.setup({}, '#ember-testing');
 
     var hasRendered = false;
-    var OutletView = module.container.lookupFactory('view:-outlet');
+    var OutletView = module.container.factoryFor ? module.container.factoryFor('view:-outlet') : module.container.lookupFactory('view:-outlet');
     var OutletTemplate = module.container.lookup('template:-outlet');
     var toplevelView = module.component = OutletView.create();
     var hasOutletTemplate = !!OutletTemplate;
@@ -1087,13 +1303,6 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
 
   function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-  var ACTION_KEY = undefined;
-  if (_hasEmberVersion['default'](2, 0)) {
-    ACTION_KEY = 'actions';
-  } else {
-    ACTION_KEY = '_actions';
-  }
-
   var isPreGlimmer = !_hasEmberVersion['default'](1, 13);
 
   var _default = (function (_AbstractTestModule) {
@@ -1177,7 +1386,7 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
       var container = this.container;
 
       var factory = function factory() {
-        return container.lookupFactory(subjectName);
+        return container.factoryFor ? container.factoryFor(subjectName) : container.lookupFactory(subjectName);
       };
 
       _AbstractTestModule.prototype.setupContext.call(this, {
@@ -1210,7 +1419,7 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
 
       // only setup the injection if we are running against a version
       // of Ember that has `-view-registry:main` (Ember >= 1.12)
-      if (this.container.lookupFactory('-view-registry:main')) {
+      if (this.container.factoryFor ? this.container.factoryFor('-view-registry:main') : this.container.lookupFactory('-view-registry:main')) {
         (this.registry || this.container).injection('component', '_viewRegistry', '-view-registry:main');
       }
     };
@@ -1295,8 +1504,8 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
 
   exports['default'] = _default;
 });
-define('ember-test-helpers/test-module-for-model', ['exports', './test-module', 'ember'], function (exports, _testModule, _ember) {
-  /* global DS, require, requirejs */ // added here to prevent an import from erroring when ED is not present
+define('ember-test-helpers/test-module-for-model', ['exports', 'require', './test-module', 'ember'], function (exports, _require, _testModule, _ember) {
+  /* global DS, requirejs */ // added here to prevent an import from erroring when ED is not present
 
   'use strict';
 
@@ -1323,10 +1532,10 @@ define('ember-test-helpers/test-module-for-model', ['exports', './test-module', 
       var callbacks = this.callbacks;
       var modelName = this.modelName;
 
-      var adapterFactory = container.lookupFactory('adapter:application');
+      var adapterFactory = container.factoryFor ? container.factoryFor('adapter:application') : container.lookupFactory('adapter:application');
       if (!adapterFactory) {
         if (requirejs.entries['ember-data/adapters/json-api']) {
-          adapterFactory = require('ember-data/adapters/json-api')['default'];
+          adapterFactory = _require['default']('ember-data/adapters/json-api')['default'];
         }
 
         // when ember-data/adapters/json-api is provided via ember-cli shims
@@ -1475,7 +1684,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', './abstract-test-m
       var container = this.container;
 
       var factory = function factory() {
-        return container.lookupFactory(subjectName);
+        return container.factoryFor ? container.factoryFor(subjectName) : container.lookupFactory(subjectName);
       };
 
       _AbstractTestModule.prototype.setupContext.call(this, {

@@ -96,6 +96,10 @@ define('ember-mocha/mocha-module', ['exports', 'ember', 'mocha', 'ember-test-hel
         return module.teardown();
       });
 
+      _mocha.after(function () {
+        module = null;
+      });
+
       tests = tests || function () {};
       tests.call(this);
     }
@@ -142,6 +146,10 @@ define('ember-mocha/setup-test-factory', ['exports', 'mocha', 'ember-test-helper
 
       _mocha.afterEach(function () {
         return module.teardown();
+      });
+
+      _mocha.after(function () {
+        module = null;
       });
     };
   };
@@ -442,8 +450,8 @@ define('ember-test-helpers/abstract-test-module', ['exports', './wait', './test-
 
   exports['default'] = _default;
 });
-define('ember-test-helpers/build-registry', ['exports', 'ember'], function (exports, _ember) {
-  /* globals global, self, requirejs, require */
+define('ember-test-helpers/build-registry', ['exports', 'require', 'ember'], function (exports, _require, _ember) {
+  /* globals global, self, requirejs */
 
   'use strict';
 
@@ -482,7 +490,7 @@ define('ember-test-helpers/build-registry', ['exports', 'ember'], function (expo
     function register(name, factory) {
       var thingToRegisterWith = registry || container;
 
-      if (!container.lookupFactory(name)) {
+      if (!(container.factoryFor ? container.factoryFor(name) : container.lookupFactory(name))) {
         thingToRegisterWith.register(name, factory);
       }
     }
@@ -543,7 +551,7 @@ define('ember-test-helpers/build-registry', ['exports', 'ember'], function (expo
       // available on the globalContext and hence ember-data wouldn't be setup
       // correctly for the tests; that's why we import and call setupContainer
       // here; also see https://github.com/emberjs/data/issues/4071 for context
-      var setupContainer = require('ember-data/setup-container')['default'];
+      var setupContainer = _require['default']('ember-data/setup-container')['default'];
       setupContainer(registry || container);
     } else if (globalContext.DS) {
       var DS = globalContext.DS;
@@ -682,12 +690,13 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
       }
 
       var integrationOption = callbacks.integration;
+      var hasNeeds = Array.isArray(callbacks.needs);
 
       _TestModule.call(this, 'component:' + componentName, description, callbacks);
 
       this.componentName = componentName;
 
-      if (callbacks.needs || callbacks.unit || integrationOption === false) {
+      if (hasNeeds || callbacks.unit || integrationOption === false) {
         this.isUnitTest = true;
       } else if (integrationOption) {
         this.isUnitTest = false;
@@ -797,7 +806,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
 
       // only setup the injection if we are running against a version
       // of Ember that has `-view-registry:main` (Ember >= 1.12)
-      if (this.container.lookupFactory('-view-registry:main')) {
+      if (this.container.factoryFor ? this.container.factoryFor('-view-registry:main') : this.container.lookupFactory('-view-registry:main')) {
         (this.registry || this.container).injection('component', '_viewRegistry', '-view-registry:main');
       }
 
@@ -828,7 +837,7 @@ define('ember-test-helpers/test-module-for-component', ['exports', './test-modul
     context.dispatcher.setup({}, '#ember-testing');
 
     var hasRendered = false;
-    var OutletView = module.container.lookupFactory('view:-outlet');
+    var OutletView = module.container.factoryFor ? module.container.factoryFor('view:-outlet') : module.container.lookupFactory('view:-outlet');
     var OutletTemplate = module.container.lookup('template:-outlet');
     var toplevelView = module.component = OutletView.create();
     var hasOutletTemplate = !!OutletTemplate;
@@ -974,13 +983,6 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
 
   function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-  var ACTION_KEY = undefined;
-  if (_hasEmberVersion['default'](2, 0)) {
-    ACTION_KEY = 'actions';
-  } else {
-    ACTION_KEY = '_actions';
-  }
-
   var isPreGlimmer = !_hasEmberVersion['default'](1, 13);
 
   var _default = (function (_AbstractTestModule) {
@@ -1064,7 +1066,7 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
       var container = this.container;
 
       var factory = function factory() {
-        return container.lookupFactory(subjectName);
+        return container.factoryFor ? container.factoryFor(subjectName) : container.lookupFactory(subjectName);
       };
 
       _AbstractTestModule.prototype.setupContext.call(this, {
@@ -1097,7 +1099,7 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
 
       // only setup the injection if we are running against a version
       // of Ember that has `-view-registry:main` (Ember >= 1.12)
-      if (this.container.lookupFactory('-view-registry:main')) {
+      if (this.container.factoryFor ? this.container.factoryFor('-view-registry:main') : this.container.lookupFactory('-view-registry:main')) {
         (this.registry || this.container).injection('component', '_viewRegistry', '-view-registry:main');
       }
     };
@@ -1182,8 +1184,8 @@ define('ember-test-helpers/test-module-for-integration', ['exports', 'ember', '.
 
   exports['default'] = _default;
 });
-define('ember-test-helpers/test-module-for-model', ['exports', './test-module', 'ember'], function (exports, _testModule, _ember) {
-  /* global DS, require, requirejs */ // added here to prevent an import from erroring when ED is not present
+define('ember-test-helpers/test-module-for-model', ['exports', 'require', './test-module', 'ember'], function (exports, _require, _testModule, _ember) {
+  /* global DS, requirejs */ // added here to prevent an import from erroring when ED is not present
 
   'use strict';
 
@@ -1210,10 +1212,10 @@ define('ember-test-helpers/test-module-for-model', ['exports', './test-module', 
       var callbacks = this.callbacks;
       var modelName = this.modelName;
 
-      var adapterFactory = container.lookupFactory('adapter:application');
+      var adapterFactory = container.factoryFor ? container.factoryFor('adapter:application') : container.lookupFactory('adapter:application');
       if (!adapterFactory) {
         if (requirejs.entries['ember-data/adapters/json-api']) {
-          adapterFactory = require('ember-data/adapters/json-api')['default'];
+          adapterFactory = _require['default']('ember-data/adapters/json-api')['default'];
         }
 
         // when ember-data/adapters/json-api is provided via ember-cli shims
@@ -1362,7 +1364,7 @@ define('ember-test-helpers/test-module', ['exports', 'ember', './abstract-test-m
       var container = this.container;
 
       var factory = function factory() {
-        return container.lookupFactory(subjectName);
+        return container.factoryFor ? container.factoryFor(subjectName) : container.lookupFactory(subjectName);
       };
 
       _AbstractTestModule.prototype.setupContext.call(this, {
